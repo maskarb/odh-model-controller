@@ -59,7 +59,7 @@ func WithModelName(name string) LLMInferenceServiceOption {
 	}
 }
 
-func WithGatewayRefs(refs ...v1alpha2.UntypedObjectReference) LLMInferenceServiceOption {
+func WithGatewayRefs(refs ...v1alpha2.GatewayObjectReference) LLMInferenceServiceOption {
 	return func(llmSvc *v1alpha2.LLMInferenceService) {
 		if llmSvc.Spec.Router == nil {
 			llmSvc.Spec.Router = &v1alpha2.RouterSpec{}

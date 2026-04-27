@@ -28,6 +28,7 @@ func GetKServeRouteComparator() ResourceComparator {
 		requestedRoute := requested.(*v1.Route)
 		return reflect.DeepEqual(deployedRoute.Spec.Host, requestedRoute.Spec.Host) &&
 			reflect.DeepEqual(deployedRoute.Spec.To, requestedRoute.Spec.To) &&
+			reflect.DeepEqual(deployedRoute.Spec.AlternateBackends, requestedRoute.Spec.AlternateBackends) &&
 			reflect.DeepEqual(deployedRoute.Spec.Port, requestedRoute.Spec.Port) &&
 			reflect.DeepEqual(deployedRoute.Spec.TLS, requestedRoute.Spec.TLS) &&
 			reflect.DeepEqual(deployedRoute.Spec.WildcardPolicy, requestedRoute.Spec.WildcardPolicy) &&

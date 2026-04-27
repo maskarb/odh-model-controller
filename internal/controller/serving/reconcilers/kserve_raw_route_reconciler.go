@@ -177,6 +177,12 @@ func (r *KserveRawRouteReconciler) createDesiredResource(ctx context.Context, lo
 			InsecureEdgeTerminationPolicy: v1.InsecureEdgeTerminationPolicyRedirect,
 		}
 	}
+	if len(isvc.Spec.Canary) > 0 {
+		if err := r.applyCanaryTrafficSplits(ctx, log, isvc, desiredRoute); err != nil {
+			return nil, err
+		}
+	}
+
 	if err = ctrl.SetControllerReference(isvc, desiredRoute, r.client.Scheme()); err != nil {
 		return nil, err
 	}
@@ -278,5 +284,52 @@ func (r *KserveRawRouteReconciler) processDelta(ctx context.Context, log logr.Lo
 			return err
 		}
 	}
+	return nil
+}
+
+// applyCanaryTrafficSplits modifies the OpenShift Route to split traffic between
+// the stable predictor and canary deployments using alternateBackends.
+func (r *KserveRawRouteReconciler) applyCanaryTrafficSplits(ctx context.Context, log logr.Logger, isvc *kservev1beta1.InferenceService, route *v1.Route) error {
+	var totalCanaryPercent int32
+	for _, canary := range isvc.Spec.Canary {
+		totalCanaryPercent += canary.TrafficPercent
+	}
+	stableWeight := int32(100) - totalCanaryPercent
+	route.Spec.To.Weight = &stableWeight
+
+	var alternateBackends []v1.RouteTargetReference
+	for _, canary := range isvc.Spec.Canary {
+		canaryServiceName := fmt.Sprintf("%s-%s-predictor", isvc.Name, canary.Name)
+
+		// Verify the canary service exists
+		svc := &corev1.Service{}
+		if err := r.client.Get(ctx, types.NamespacedName{Name: canaryServiceName, Namespace: isvc.Namespace}, svc); err != nil {
+			return fmt.Errorf("canary service %q not found: %w", canaryServiceName, err)
+		}
+
+		weight := canary.TrafficPercent
+		alternateBackends = append(alternateBackends, v1.RouteTargetReference{
+			Kind:   "Service",
+			Name:   canaryServiceName,
+			Weight: &weight,
+		})
+		log.V(1).Info("Canary traffic split", "service", canaryServiceName, "weight", weight)
+	}
+
+	route.Spec.AlternateBackends = alternateBackends
+
+	// Use numeric targetPort so HAProxy can resolve it on all backends
+	if route.Spec.Port != nil && route.Spec.Port.TargetPort.Type == intstr.String {
+		svc := &corev1.Service{}
+		if err := r.client.Get(ctx, types.NamespacedName{Name: route.Spec.To.Name, Namespace: isvc.Namespace}, svc); err == nil {
+			for _, port := range svc.Spec.Ports {
+				if port.Name == route.Spec.Port.TargetPort.StrVal {
+					route.Spec.Port.TargetPort = intstr.FromInt32(port.TargetPort.IntVal)
+					break
+				}
+			}
+		}
+	}
+
 	return nil
 }
